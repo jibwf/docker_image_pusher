@@ -1,8 +1,8 @@
-adguard/adguardhome
-garethgeorge/backrest
-jellyfin/jellyfin
-devfox101/mt-photos-ai
-openlistteam/openlist
-lscr.io/linuxserver/qbittorrent
-songloft/songloft
-lscr.io/linuxserver/syncthing
+adguard/adguardhome:latest
+garethgeorge/backrest:latest
+jellyfin/jellyfin:latest
+devfox101/mt-photos-ai:latest
+openlistteam/openlist:latest
+lscr.io/linuxserver/qbittorrent:latest
+songloft/songloft:latest
+lscr.io/linuxserver/syncthing:latest
