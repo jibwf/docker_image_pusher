@@ -6,3 +6,4 @@ openlistteam/openlist:latest
 lscr.io/linuxserver/qbittorrent:latest
 songloft/songloft:latest
 lscr.io/linuxserver/syncthing:latest
+cropflre/nowen-note:latest
