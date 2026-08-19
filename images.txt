@@ -1,6 +1,6 @@
 adguard/adguardhome:latest
 garethgeorge/backrest:latest
 jellyfin/jellyfin:latest
-openlistteam/openlist:v4.2.2
+openlistteam/openlist:latest
 songloft/songloft:latest
 cropflre/nowen-note:latest
