@@ -5,3 +5,4 @@ openlistteam/openlist:latest
 songloft/songloft:latest
 cropflre/nowen-note:latest
 lscr.io/linuxserver/qbittorrent:latest
+ghcr.io/ankiotomas/book
