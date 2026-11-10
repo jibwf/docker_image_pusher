@@ -14,19 +14,10 @@ env:
   ALIYUN_REGISTRY_PASSWORD: "${{ secrets.ALIYUN_REGISTRY_PASSWORD }}"
 
 jobs:
-
   build:
     name: Pull
     runs-on: ubuntu-latest
     steps:
-    - name: Before freeing up disk space
-      run: |
-        echo "Before freeing up disk space"
-        echo "=============================================================================="
-        df -hT
-        echo "=============================================================================="
-
-    # 增加可用磁盘空间（深度清理托管机自带环境）
     - name: Maximize build space
       uses: easimon/maximize-build-space@master
       with:
@@ -34,17 +25,12 @@ jobs:
         swap-size-mb: 128
         remove-dotnet: 'true'
         remove-haskell: 'true'
+        remove-android: 'true'   # 榨出额外 11GB+ 空间
+        remove-codeql: 'true'    # 榨出额外 5GB+ 空间
         build-mount-path: '/var/lib/docker/'
 
     - name: Restart docker
       run: sudo service docker restart
-
-    - name: Free up disk space complete
-      run: |
-        echo "Free up disk space complete"
-        echo "=============================================================================="
-        df -hT
-        echo "=============================================================================="
 
     - name: Checkout Code
       uses: actions/checkout@v5
@@ -53,14 +39,12 @@ jobs:
       run: |
         docker login -u $ALIYUN_REGISTRY_USER -p $ALIYUN_REGISTRY_PASSWORD $ALIYUN_REGISTRY
         
-        # 数据预处理,判断镜像是否重名
+        # 1. 预处理判断重名
         declare -A duplicate_images
         declare -A temp_map
         while IFS= read -r line || [ -n "$line" ]; do
             [[ -z "$line" ]] && continue
-            if echo "$line" | grep -q '^\s*#'; then
-                continue
-            fi
+            [[ "$line" =~ ^[[:space:]]*# ]] && continue
             
             image=$(echo "$line" | awk '{print $NF}')
             image="${image%%@*}"
@@ -71,7 +55,6 @@ jobs:
             
             if [[ -n "${temp_map[$image_name]}" ]]; then
                  if [[ "${temp_map[$image_name]}" != $name_space  ]]; then
-                    echo "duplicate image name: $image_name"
                     duplicate_images[$image_name]="true"
                  fi
             else
@@ -79,23 +62,14 @@ jobs:
             fi       
         done < images.txt
         
-        # 核心循环
+        # 2. 核心搬运循环
         while IFS= read -r line || [ -n "$line" ]; do
             [[ -z "$line" ]] && continue
-            if echo "$line" | grep -q '^\s*#'; then
-                continue
-            fi
+            [[ "$line" =~ ^[[:space:]]*# ]] && continue
         
-            # 使用 -q 隐式拉取，减少大量的控制台输出日志
-            echo "docker pull $line"
-            docker pull -q $line
-            
-            platform=$(echo "$line" | awk -F'--platform[ =]' '{if (NF>1) print $2}' | awk '{print $1}')
-            if [ -z "$platform" ]; then
-                platform_prefix=""
-            else
-                platform_prefix="${platform//\//_}_"
-            fi
+            # 强制指定 x86 架构拉取，并使用 -q 保持静默防止日志把磁盘撑爆
+            echo "-> 正在拉取 x86 镜像: $line"
+            docker pull -q --platform linux/amd64 $line
             
             image=$(echo "$line" | awk '{print $NF}')
             image_name_tag=$(echo "$image" | awk -F'/' '{print $NF}')
@@ -110,19 +84,16 @@ jobs:
             fi
             
             image_name_tag="${image_name_tag%%@*}"
-            new_image="$ALIYUN_REGISTRY/$ALIYUN_NAME_SPACE/$platform_prefix$name_space_prefix$image_name_tag"
+            new_image="$ALIYUN_REGISTRY/$ALIYUN_NAME_SPACE/$name_space_prefix$image_name_tag"
             
             docker tag $image $new_image
             
-            # 使用 -q 隐式推送
-            echo "docker push $new_image"
+            echo "-> 正在推送至阿里云: $new_image"
             docker push -q $new_image
             
-            echo "开始深度清理该镜像残留空间..."
-            # 1. 移除镜像 tag
+            # 3. 推完一个立刻当场毁灭，不留一点缓存垃圾
             docker rmi $image || true
             docker rmi $new_image || true
-            # 2. 深度强力清理未使用的分层与缓存
             docker system prune -f
             
         done < images.txt
