@@ -15,30 +15,19 @@ env:
 
 jobs:
   build:
-    name: Pull
+    name: Sync
     runs-on: ubuntu-latest
     steps:
-    - name: Maximize build space
-      uses: easimon/maximize-build-space@master
-      with:
-        root-reserve-mb: 2048
-        swap-size-mb: 128
-        remove-dotnet: 'true'
-        remove-haskell: 'true'
-        remove-android: 'true'   # 榨出额外 11GB+ 空间
-        remove-codeql: 'true'    # 榨出额外 5GB+ 空间
-        build-mount-path: '/var/lib/docker/'
-
-    - name: Restart docker
-      run: sudo service docker restart
-
     - name: Checkout Code
-      uses: actions/checkout@v5
+      uses: actions/checkout@v4
 
-    - name: Build and push image Aliyun
+    - name: Install Skopeo
       run: |
-        docker login -u $ALIYUN_REGISTRY_USER -p $ALIYUN_REGISTRY_PASSWORD $ALIYUN_REGISTRY
-        
+        sudo apt-get update
+        sudo apt-get install -y skopeo
+
+    - name: Sync Images to Aliyun
+      run: |
         # 1. 预处理判断重名
         declare -A duplicate_images
         declare -A temp_map
@@ -62,14 +51,10 @@ jobs:
             fi       
         done < images.txt
         
-        # 2. 核心搬运循环
+        # 2. 通过 Skopeo 进行不落地的流式同步
         while IFS= read -r line || [ -n "$line" ]; do
             [[ -z "$line" ]] && continue
             [[ "$line" =~ ^[[:space:]]*# ]] && continue
-        
-            # 强制指定 x86 架构拉取，并使用 -q 保持静默防止日志把磁盘撑爆
-            echo "-> 正在拉取 x86 镜像: $line"
-            docker pull -q --platform linux/amd64 $line
             
             image=$(echo "$line" | awk '{print $NF}')
             image_name_tag=$(echo "$image" | awk -F'/' '{print $NF}')
@@ -84,16 +69,19 @@ jobs:
             fi
             
             image_name_tag="${image_name_tag%%@*}"
+            
+            # 拼接阿里云的目标镜像地址
             new_image="$ALIYUN_REGISTRY/$ALIYUN_NAME_SPACE/$name_space_prefix$image_name_tag"
             
-            docker tag $image $new_image
+            echo "========================================="
+            echo "🚀 正在无本地缓存直接同步: $image -> $new_image"
+            echo "========================================="
             
-            echo "-> 正在推送至阿里云: $new_image"
-            docker push -q $new_image
-            
-            # 3. 推完一个立刻当场毁灭，不留一点缓存垃圾
-            docker rmi $image || true
-            docker rmi $new_image || true
-            docker system prune -f
-            
+            # 核心同步命令：--override-os 指定只搬运 x86_64（linux/amd64）
+            # docker:// 表示协议头，skopeo copy 直接在云端跨仓库完成握手和转发
+            skopeo copy \
+              --override-os linux --override-arch amd64 \
+              --dest-creds "$ALIYUN_REGISTRY_USER:$ALIYUN_REGISTRY_PASSWORD" \
+              docker://"$image" docker://"$new_image"
+              
         done < images.txt
