@@ -34,8 +34,6 @@ jobs:
         swap-size-mb: 128
         remove-dotnet: 'true'
         remove-haskell: 'true'
-        remove-android: 'true' # 开启此项，额外释放约 11GB 空间
-        remove-codeql: 'true'  # 开启此项，额外释放约 5GB 空间
         build-mount-path: '/var/lib/docker/'
 
     - name: Restart docker
@@ -50,9 +48,6 @@ jobs:
 
     - name: Checkout Code
       uses: actions/checkout@v5
-
-    - name: Docker Setup Buildx
-      uses: docker/setup-buildx-action@v4
 
     - name: Build and push image Aliyun
       run: |
